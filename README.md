@@ -12,7 +12,7 @@ go get github.com/ninepeach/go-environment
 
 ```
 
-##Usage
+## Usage
 
 The package uses a singleton instance to manage global variables. Here is an example of how to use it:
 
