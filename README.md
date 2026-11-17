@@ -24,8 +24,14 @@ func main() {
 	env.Set("AppName", "MyGoApp")
 	env.Set("MaxRetries", 3)
 
-	appName := env.Get("AppName").(string)
-	maxRetries := env.Get("MaxRetries").(int)
+	appName, ok := env.Get("AppName").(string)
+	if !ok {
+		panic("AppName missing or not a string")
+	}
+	maxRetries, ok := env.Get("MaxRetries").(int)
+	if !ok {
+		panic("MaxRetries missing or not an int")
+	}
 	fmt.Println("AppName:", appName)
 	fmt.Println("MaxRetries:", maxRetries)
 
@@ -43,3 +49,5 @@ Use `New()` for an independent registry. The zero value `var env goenv.Environme
 - `Clone()` makes a **shallow copy**: the registries have independent key maps, but stored pointers, slices, maps, and other reference-type values remain shared.
 - Registry operations are synchronized; **mutable stored values are not automatically thread-safe**.
 - `GetFieldValue` reads exported struct fields and returns errors for invalid input or inaccessible fields.
+
+Do not copy an `Environment` after first use: it contains a `sync.RWMutex`. Use `Clone()` to create an independent registry map.
