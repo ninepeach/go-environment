@@ -1,6 +1,7 @@
 package environment
 
 import (
+	"fmt"
 	"sync"
 	"testing"
 
@@ -43,8 +44,7 @@ func TestEnvironment(t *testing.T) {
 		require.Equal(t, "value", e.Get("my-string"))
 		clone.Delete("my-uint64")
 		require.Equal(t, uint64(4576), e.Get("my-uint64"))
-		clone.Get("my-struct").(*envTest).number = 2000
-		require.Equal(t, uint64(2000), e.Get("my-struct").(*envTest).number)
+		require.Same(t, e.Get("my-struct"), clone.Get("my-struct"))
 	})
 }
 
@@ -116,4 +116,54 @@ func TestEnvironmentSingleton(t *testing.T) {
 	require.Equal(t, "value1", env2.Get("key1"))
 	env2.Set("key2", "value2")
 	require.Equal(t, "value2", env1.Get("key2"))
+}
+
+func TestZeroValueConcurrent(t *testing.T) {
+	var e Environment
+	const workers = 32
+	var wg sync.WaitGroup
+	for i := 0; i < workers; i++ {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			e.Set(fmt.Sprintf("key-%d", i), i)
+		}(i)
+	}
+	wg.Wait()
+	for i := 0; i < workers; i++ {
+		value, ok := e.Lookup(fmt.Sprintf("key-%d", i))
+		require.True(t, ok)
+		require.Equal(t, i, value)
+	}
+}
+
+func TestGetFieldValueEmbedded(t *testing.T) {
+	type Inner struct {
+		Name string
+	}
+	type Embedded struct {
+		*Inner
+	}
+	type A struct {
+		Name string
+	}
+	type B struct {
+		Name string
+	}
+	type Ambiguous struct {
+		A
+		B
+	}
+	value, err := GetFieldValue(Embedded{Inner: &Inner{Name: "ok"}}, "Name")
+	require.NoError(t, err)
+	require.Equal(t, "ok", value)
+
+	require.NotPanics(t, func() {
+		_, err := GetFieldValue(Embedded{}, "Name")
+		require.Error(t, err)
+	})
+	require.NotPanics(t, func() {
+		_, err := GetFieldValue(Ambiguous{}, "Name")
+		require.Error(t, err)
+	})
 }
