@@ -1,40 +1,45 @@
 # go-environment
-Global Variable Management
 
-The `go-environment` package provides a singleton pattern for managing global variables in Go applications. It allows for centralized registration, storage, and retrieval of environment configurations, application-wide variables, and constants. This package ensures that only one instance of the global variable registry exists, simplifying management and access across your Go project.
+A lightweight, thread-safe key-value registry for Go applications, with an optional process-wide singleton.
 
 ## Installation
 
-You can install the `go-environment` package using `go get`:
-
 ```bash
 go get github.com/ninepeach/go-environment
-
 ```
 
 ## Usage
 
-The package uses a singleton instance to manage global variables. Here is an example of how to use it:
-
 ```go
 package main
 
-import "github.com/ninepeach/go-environment"
+import (
+	"fmt"
+
+	goenv "github.com/ninepeach/go-environment"
+)
 
 func main() {
-    // Register global variables
-    env := goenv.GetInstance()
-    env.Set("AppName", "MyGoApp")
-    env.Set("MaxRetries", 3)
+	env := goenv.GetInstance()
+	env.Set("AppName", "MyGoApp")
+	env.Set("MaxRetries", 3)
 
-    // Access global variables
-    appName := env.Get("AppName").(string)
-    maxRetries := env.Get("MaxRetries").(int)
+	appName := env.Get("AppName").(string)
+	maxRetries := env.Get("MaxRetries").(int)
+	fmt.Println("AppName:", appName)
+	fmt.Println("MaxRetries:", maxRetries)
 
-    // Print values
-    fmt.Println("AppName:", appName)
-    fmt.Println("MaxRetries:", maxRetries)
+	if value, ok := env.Lookup("AppName"); ok {
+		fmt.Println("Found:", value)
+	}
+	env.Delete("MaxRetries")
 }
-
 ```
 
+Use `New()` for an independent registry. The zero value `var env goenv.Environment` is also usable.
+
+- `Get(key)` returns `nil` for a missing key. `Lookup(key)` distinguishes a missing key from a stored `nil`.
+- `Delete(key)` removes a key and is safe for missing keys.
+- `Clone()` makes a **shallow copy**: the registries have independent key maps, but stored pointers, slices, maps, and other reference-type values remain shared.
+- Registry operations are synchronized; **mutable stored values are not automatically thread-safe**.
+- `GetFieldValue` reads exported struct fields and returns errors for invalid input or inaccessible fields.
