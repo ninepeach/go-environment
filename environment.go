@@ -8,6 +8,7 @@ import (
 
 // Environment provides thread-safe access to a key-value registry.
 // Mutable values stored in the registry are not protected.
+// An Environment must not be copied after first use.
 type Environment struct {
 	mu sync.RWMutex
 	m  map[string]interface{}
@@ -90,12 +91,26 @@ func GetFieldValue(config interface{}, fieldName string) (interface{}, error) {
 	if v.Kind() != reflect.Struct {
 		return nil, fmt.Errorf("config is not a struct")
 	}
-	field := v.FieldByName(fieldName)
-	if !field.IsValid() {
+	// Resolve field metadata before accessing values: Value.FieldByName can
+	// panic when a promoted field is reached through a nil embedded pointer.
+	fieldInfo, ok := v.Type().FieldByName(fieldName)
+	if !ok {
 		return nil, fmt.Errorf("field %q not found", fieldName)
 	}
-	if !field.CanInterface() {
+	for _, index := range fieldInfo.Index {
+		for v.Kind() == reflect.Ptr {
+			if v.IsNil() {
+				return nil, fmt.Errorf("field %q is behind a nil embedded pointer", fieldName)
+			}
+			v = v.Elem()
+		}
+		if v.Kind() != reflect.Struct {
+			return nil, fmt.Errorf("field %q cannot be accessed", fieldName)
+		}
+		v = v.Field(index)
+	}
+	if !v.CanInterface() {
 		return nil, fmt.Errorf("field %q is not exported", fieldName)
 	}
-	return field.Interface(), nil
+	return v.Interface(), nil
 }
