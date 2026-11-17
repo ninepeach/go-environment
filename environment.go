@@ -6,7 +6,8 @@ import (
 	"sync"
 )
 
-// Environment is a thread-safe key-value store.
+// Environment provides thread-safe access to a key-value registry.
+// Mutable values stored in the registry are not protected.
 type Environment struct {
 	mu sync.RWMutex
 	m  map[string]interface{}
@@ -25,60 +26,76 @@ func GetInstance() *Environment {
 	return instance
 }
 
+// New creates an empty Environment. The zero value is also ready for use.
 func New() *Environment {
-	return &Environment{
-		m: make(map[string]interface{}),
-	}
+	return &Environment{m: make(map[string]interface{})}
 }
 
-// Get retrieves the value associated with the given key.
-// Returns nil if the key does not exist.
+// Get retrieves a value or nil if the key does not exist.
+// Use Lookup to distinguish an absent key from a stored nil.
 func (e *Environment) Get(key string) interface{} {
+	value, _ := e.Lookup(key)
+	return value
+}
+
+// Lookup retrieves a value and reports whether the key exists.
+func (e *Environment) Lookup(key string) (interface{}, bool) {
 	e.mu.RLock()
 	defer e.mu.RUnlock()
-	return e.m[key]
+	value, ok := e.m[key]
+	return value, ok
 }
 
-// Set stores the value associated with the given key.
+// Set stores a value, initializing the map if necessary.
 func (e *Environment) Set(key string, value interface{}) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
+	if e.m == nil {
+		e.m = make(map[string]interface{})
+	}
 	e.m[key] = value
 }
 
-// Clone creates a copy of the current Environment.
+// Delete removes a key. Removing a missing key is safe.
+func (e *Environment) Delete(key string) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	delete(e.m, key)
+}
+
+// Clone creates a shallow copy of the registry.
+// Keys are independent, but reference-type values remain shared.
 func (e *Environment) Clone() *Environment {
 	e.mu.RLock()
 	defer e.mu.RUnlock()
-
-	clone := &Environment{
-		m: make(map[string]interface{}, len(e.m)),
-	}
+	clone := &Environment{m: make(map[string]interface{}, len(e.m))}
 	for key, value := range e.m {
 		clone.m[key] = value
 	}
 	return clone
 }
 
+// GetFieldValue returns an exported field from a struct or pointer to struct.
 func GetFieldValue(config interface{}, fieldName string) (interface{}, error) {
 	if config == nil {
 		return nil, fmt.Errorf("config is nil")
 	}
-
 	v := reflect.ValueOf(config)
-
-	if v.Kind() == reflect.Ptr {
+	for v.Kind() == reflect.Ptr {
+		if v.IsNil() {
+			return nil, fmt.Errorf("config is nil")
+		}
 		v = v.Elem()
 	}
-
 	if v.Kind() != reflect.Struct {
 		return nil, fmt.Errorf("config is not a struct")
 	}
-
 	field := v.FieldByName(fieldName)
 	if !field.IsValid() {
-		return nil, fmt.Errorf("field '%s' not found", fieldName)
+		return nil, fmt.Errorf("field %q not found", fieldName)
 	}
-
+	if !field.CanInterface() {
+		return nil, fmt.Errorf("field %q is not exported", fieldName)
+	}
 	return field.Interface(), nil
 }
